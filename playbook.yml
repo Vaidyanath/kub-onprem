@@ -1,0 +1,170 @@
+- hosts: all
+  gather_facts: False
+  roles:
+    - defunctzombie.coreos-bootstrap
+  tasks:
+    - setup:
+    - name: Set hostname
+      command: hostnamectl set-hostname {{ inventory_hostname }}
+      become: True
+    - include: tasks/generate_tls_assets.yml
+
+- hosts: etcd_endpoints
+  # Don't gather facts yet because no python interpreter may be available
+  gather_facts: False
+  # This role will setup a tiny pyp interpreter on our coreos hosts
+  tasks:
+    - name: Gathering etcd_endpoints facts
+    # I run a separate setup to gather the facts for these hosts
+      setup:
+
+    - name: Create etcd2 service directory
+      file: path=/etc/systemd/system/etcd2.service.d state=directory mode=0755
+      become: True
+
+    - name: Configure etcd2 service
+      template: src=templates/conf/40-listen-address.conf dest=/etc/systemd/system/etcd2.service.d/40-listen-address.conf
+      become: True
+
+    - name: Enable etcd2
+      service: name=etcd2 enabled=yes
+      become: True
+
+    - name: Start etcd2
+      service: name=etcd2 state=started
+      become: True
+
+- hosts: kubernetes-masters
+
+  tasks:
+    - setup:
+
+    - include: tasks/generate_tls_assets-masters.yml
+
+    - name: Prepare tls assets dir
+      file: path=/etc/kubernetes/ssl state=directory mode=0755
+      become: True
+
+    - name: Install CA
+      copy: src=assets/tls/ca.pem dest=/etc/kubernetes/ssl/ca.pem mode=0644 owner=root group=root force=no
+      become: True
+
+    - name: Install apiserver cert
+      copy: src=assets/tls/apiserver.pem dest=/etc/kubernetes/ssl/apiserver.pem mode=0644 owner=root group=root force=no
+      become: True
+    - name: Install apiserver key
+      copy: src=assets/tls/apiserver-key.pem dest=/etc/kubernetes/ssl/apiserver-key.pem mode=0600 owner=root force=no
+      become: True
+
+    - name: Prepare kubernetes manifests directory
+      file: path=/etc/kubernetes/manifests state=directory mode=0755
+      become: True
+
+    - name: Create kube-apiserver manifest
+      template: src=templates/manifests/kube-apiserver.yaml.j2 dest=/etc/kubernetes/manifests/kube-apiserver.yaml
+      become: True
+
+    - name: Create kube-proxy manifest
+      template: src=templates/manifests/kube-proxy.yaml.j2 dest=/etc/kubernetes/manifests/kube-proxy.yaml
+      become: True
+
+    - name: Create kube-controller-manager manifest
+      template: src=templates/manifests/kube-controller-manager.yaml.j2 dest=/etc/kubernetes/manifests/kube-controller-manager.yaml
+      become: True
+
+    - name: Create kube-scheduler manifest
+      template: src=templates/manifests/kube-scheduler.yaml.j2 dest=/etc/kubernetes/manifests/kube-scheduler.yaml
+      become: True
+
+    - include: tasks/enable_services_master.yml
+
+    - name: Reload the systemd manager configuration
+      command: systemctl daemon-reload
+      become: True
+
+
+
+    - name : Creating kube-system namespace
+      uri:
+        url: http://127.0.0.1:8080/api/v1/namespaces
+        method: POST
+        body: '{"apiVersion":"v1","kind":"Namespace","metadata":{"name":"kube-system"}}'
+        status_code: 201,409
+        body_format: json
+      #XXX does this has to be run on each node ?
+
+  vars:
+    etcd_endpoints_urls:
+        "{% set comma = joiner(',') %}
+        {% for host in groups['etcd_endpoints'] %}
+        {{comma()}}http://{{hostvars[host]['ansible_default_ipv4']['address']}}:{{etcd_port}}
+        {% endfor %}"
+## Minions ##
+- hosts: kubernetes-minions
+
+  tasks:
+    - include: tasks/generate_tls_assets-minions.yml
+
+    - name: Prepare tls assets dir
+      file: path=/etc/kubernetes/ssl state=directory mode=0755
+      become: True
+
+    - name: Install CA
+      copy: src=assets/tls/ca.pem dest=/etc/kubernetes/ssl/ca.pem mode=0644 owner=root group=root force=no
+      become: True
+
+    - name: Install worker cert
+      copy: src=assets/tls/{{inventory_hostname}}-worker.pem dest=/etc/kubernetes/ssl/{{inventory_hostname}}-worker.pem mode=0644 owner=root group=root force=no
+      become: True
+    - name: Install worker key
+      copy: src=assets/tls/{{inventory_hostname}}-worker-key.pem dest=/etc/kubernetes/ssl/{{inventory_hostname}}-worker-key.pem mode=0600 owner=root force=no
+      become: True
+    - name: Symlink worker cert
+      file: src=/etc/kubernetes/ssl/{{inventory_hostname}}-worker.pem dest=/etc/kubernetes/ssl/worker.pem state=link
+      become: True
+    - name: Symlink worker key
+      file: src=/etc/kubernetes/ssl/{{inventory_hostname}}-worker-key.pem dest=/etc/kubernetes/ssl/worker-key.pem state=link
+      become: True
+
+    - include: tasks/enable_services_minions.yml
+
+    - name: Reload the systemd manager configuration
+      command: systemctl daemon-reload
+      become: True
+
+    - name: Prepare kubernetes manifests directory
+      file: path=/etc/kubernetes/manifests state=directory mode=0755
+      become: True
+    - name: Create kube-proxy manifest
+      template: src=templates/manifests/kube-proxy-minion.yaml.j2 dest=/etc/kubernetes/manifests/kube-proxy.yaml
+      become: True
+    - name: Set Up kubeconfig
+      copy:  src=assets/worker-kubeconfig.yaml dest=/etc/kubernetes/worker-kubeconfig.yaml mode=0755
+      become: True
+
+    - name: Enabling kubelet service
+      service: name=kubelet.service enabled=yes
+      become: True
+
+    - name: Starting kubelet service
+      service: name=kubelet.service state=started
+      become: True
+
+    - name: Enabling flanneld service
+      service: name=flanneld.service enabled=yes
+      become: True
+
+    - name: Starting flanneld service
+      service: name=flanneld.service state=started
+      become: True
+
+
+
+  vars:
+    kubApiserversUrls:
+        "{% set comma = joiner(',') %}{% for host in groups['kubernetes-masters'] %}{{comma()}}https://{{hostvars[host]['ansible_default_ipv4']['address']}}
+        {% endfor %}"
+    kubeApiserversIps:
+        "{% set comma = joiner(',') %}{% for host in groups['kubernetes-masters'] %}{{comma()}}{{hostvars[host]['ansible_default_ipv4']['address']}}
+        {% endfor %}"
+

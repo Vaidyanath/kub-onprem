@@ -1,0 +1,42 @@
+- name : Configuring flannel Network range
+  uri:
+      url:  "{{etcd_endpoints_urls.split(',') | random}}/v2/keys/coreos.com/network/config" # XXX What happens in HA conf if all masters dont get the same value ? 
+      method: PUT
+      body: 'value={"Network":"{{pod_network}}","Backend":{"Type":"vxlan"}}'
+      status_code: 200,201
+      #body_format: json
+
+- name: Prepare flannel config directory
+  file: path=/etc/flannel state=directory mode=0755
+  become: True
+
+- template: src=templates/conf/flannel-options.env.j2 dest=/etc/flannel/options.env
+  become: True
+
+- name: Prepare flannel drop-in directory
+  file: path=/etc/systemd/system/flanneld.service.d state=directory mode=0755
+  become: True
+
+- name: Prepare flannel system drop-in
+  copy: src=assets/systemd/40-ExecStartPre-symlink.conf dest=/etc/systemd/system/flanneld.service.d/40-ExecStartPre-symlink.conf
+  become: True
+
+- name: Prepare docker drop-in directory
+  file: path=/etc/systemd/system/docker.service.d state=directory mode=0755
+  become: True
+
+- name: Prepare docker system drop-in
+  copy: src=assets/systemd/40-flannel.conf dest=/etc/systemd/system/docker.service.d/40-flannel.conf
+  become: True
+
+- name: Prepare kubelet service
+  template: src=templates/conf/kubelet.service.j2 dest=/etc/systemd/system/kubelet.service
+  become: True
+
+- name: Enabling kubelet service
+  service: name=kubelet.service enabled=yes
+  become: True
+
+- name: Starting kubelet service
+  service: name=kubelet.service state=started
+  become: True

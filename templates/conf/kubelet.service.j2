@@ -1,0 +1,16 @@
+[Service]
+ExecStartPre=/usr/bin/mkdir -p /etc/kubernetes/manifests
+
+Environment=KUBELET_VERSION={{k8s_version}}
+ExecStart=/usr/lib/coreos/kubelet-wrapper \
+  --api-servers={% if inventory_hostname in groups['kubernetes-masters']%}http://127.0.0.1:8080{% else %}{{ kubApiserversUrls }}{% endif %} \
+  --register-schedulable=false \
+  --allow-privileged=true \
+  --config=/etc/kubernetes/manifests \
+  --hostname-override={{ansible_ssh_host}} \
+  --cluster-dns={{dns_service_ip}} \
+  --cluster-domain=cluster.local
+Restart=always
+RestartSec=10
+[Install]
+WantedBy=multi-user.target

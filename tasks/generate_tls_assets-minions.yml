@@ -1,0 +1,23 @@
+- name : Generate minions RSA keys
+  local_action: command openssl genrsa -out assets/tls/{{ inventory_hostname }}-worker-key.pem 2048 creates=assets/tls/{{ inventory_hostname }}-worker-key.pem
+
+- name: Generating minions openssl confs
+  local_action: copy content={{ workerOpensslConf }} dest=assets/tls/{{ inventory_hostname }}.worker-openssl.cnf force=no
+  vars:
+    workerOpensslConf: |
+        [req]
+        req_extensions = v3_req
+        distinguished_name = req_distinguished_name
+        [req_distinguished_name]
+        [ v3_req ]
+        basicConstraints = CA:FALSE
+        keyUsage = nonRepudiation, digitalSignature, keyEncipherment
+        subjectAltName = @alt_names
+        [alt_names]
+        IP.1 = {{  ansible_ssh_host }}
+
+- name: Generate minions CSRs
+  local_action: command openssl req -new -key assets/tls/{{inventory_hostname}}-worker-key.pem -out assets/tls/{{ inventory_hostname }}-worker.csr -subj "/CN={{ inventory_hostname  }}" -config assets/tls/{{ inventory_hostname }}.worker-openssl.cnf creates=assets/tls/{{ inventory_hostname }}-worker.csr
+
+- name: Generate minions certificates
+  local_action: command openssl x509 -req -in assets/tls/{{inventory_hostname}}-worker.csr -CA assets/tls/ca.pem -CAkey assets/tls/ca-key.pem -CAcreateserial -out assets/tls/{{inventory_hostname}}-worker.pem -days 365 -extensions v3_req -extfile assets/tls/{{inventory_hostname}}.worker-openssl.cnf creates=assets/tls/{{inventory_hostname}}-worker.pem

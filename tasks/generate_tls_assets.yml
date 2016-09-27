@@ -1,0 +1,20 @@
+- name: Preparing assets dirs
+  local_action: file path=assets/tls state=directory
+  run_once: True
+
+- name: Generating Certification Authority key
+  local_action: command openssl genrsa -out assets/tls/ca-key.pem 2048 creates=assets/tls/ca-key.pem
+  run_once: True
+- name: Generating Certification Authority
+  local_action: command openssl req -x509 -new -nodes -key assets/tls/ca-key.pem -days 10000 -out assets/tls/ca.pem -subj "/CN=kube-ca" creates=assets/tls/ca.pem
+  run_once: True
+
+- name: Generate admin key
+  local_action: command openssl genrsa -out assets/tls/admin-key.pem 2048 creates=assets/tls/admin-key.pem
+  run_once: True
+- name: Generate admin CSR
+  local_action: command openssl req -new -key assets/tls/admin-key.pem -out assets/tls/admin.csr -subj "/CN=kube-admin" creates=assets/tls/admin.csr
+  run_once: True
+- name: Generate admin certificate
+  local_action: command openssl x509 -req -in assets/tls/admin.csr -CA assets/tls/ca.pem -CAkey assets/tls/ca-key.pem -CAcreateserial -out assets/tls/admin.pem -days 365 creates=assets/tls/admin.pem
+  run_once: True

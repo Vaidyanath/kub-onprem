@@ -1,0 +1,28 @@
+kube-minion-0 ansible_ssh_host=192.168.0.101
+kube-master-0 ansible_ssh_host=192.168.0.100
+
+[kubernetes-masters]
+kube-master-0
+
+[kubernetes-minions]
+kube-minion-0
+
+
+[kubernetes-masters:vars]
+ansible_ssh_user=core
+ansible_python_interpreter="/home/core/bin/python"
+
+[kubernetes-minions:vars]
+ansible_ssh_user=core
+ansible_python_interpreter="/home/core/bin/python"
+
+[etcd_endpoints]
+kube-master-0
+
+[all:vars]
+pod_network=10.2.0.0/16
+service_ip_range=10.3.0.0/24
+k8s_service_ip=10.3.0.1
+dns_service_ip=10.3.0.10
+etcd_port=2379
+k8s_version=v1.3.5_coreos.0
