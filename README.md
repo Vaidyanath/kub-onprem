@@ -11,6 +11,9 @@ This project is made with CoreOS 962.0.0+ in mind, porting to other OSes
 may be doable just keep in mind that you will have to reimplement the
 CoreOS's built in stuff like the [kubelet-wrapper](https://coreos.com/kubernetes/docs/latest/kubelet-wrapper.html)
 
+# TLS
+tls assests are auto-generated for each node the cluster
+
 # Logging
 A preconfigured Sumo Logic collector is integrated, all you have to do is
 to provide a Sumo Logic API Access Key through a kurbenetes secret, the
